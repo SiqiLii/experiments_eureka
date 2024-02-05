@@ -1,1 +1,0 @@
-nohup python eureka.py env=shadow_hand sample=1 iteration=1 model=gpt-4-0613 >run_shadow_hand.log &
