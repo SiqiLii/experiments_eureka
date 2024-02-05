@@ -1,1 +1,1 @@
-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
+#openai api key
