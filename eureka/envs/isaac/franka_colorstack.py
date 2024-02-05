@@ -8,7 +8,7 @@ from isaacgym.torch_utils import *
 from .base.vec_task import VecTask
 
 
-class FrankaBridge(VecTask):
+class FrankaColorStack(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
@@ -78,6 +78,9 @@ class FrankaBridge(VecTask):
         self.cubeE_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, self.num_franka_dofs+24:self.num_franka_dofs+30]
         self.cubeE_dof_pos = self.cubeE_dof_state[..., 0]
         self.cubeE_dof_vel = self.cubeE_dof_state[..., 1]
+        self.cubeF_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, self.num_franka_dofs+24:self.num_franka_dofs+30]
+        self.cubeF_dof_pos = self.cubeF_dof_state[..., 0]
+        self.cubeF_dof_vel = self.cubeF_dof_state[..., 1]
 
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.num_bodies = self.rigid_body_states.shape[1]
@@ -145,6 +148,7 @@ class FrankaBridge(VecTask):
         cubeC_asset = self.gym.load_asset(self.sim, asset_root, cube_asset_file, asset_options)
         cubeD_asset = self.gym.load_asset(self.sim, asset_root, cube_asset_file, asset_options)
         cubeE_asset = self.gym.load_asset(self.sim, asset_root, cube_asset_file, asset_options)
+        cubeF_asset = self.gym.load_asset(self.sim, asset_root, cube_asset_file, asset_options)
 
         franka_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
         franka_dof_damping = to_torch([80, 80, 80, 80, 80, 80, 80, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
@@ -186,6 +190,7 @@ class FrankaBridge(VecTask):
         cubeC_dof_props = self.gym.get_asset_dof_properties(cubeC_asset)
         cubeD_dof_props = self.gym.get_asset_dof_properties(cubeD_asset)
         cubeE_dof_props = self.gym.get_asset_dof_properties(cubeE_asset)
+        cubeF_dof_props = self.gym.get_asset_dof_properties(cubeF_asset)
         for i in range(self.num_cube_dofs):
             cube_dof_props['damping'][i] = 10.0
 
@@ -209,10 +214,13 @@ class FrankaBridge(VecTask):
         cubeE_start_pose = gymapi.Transform()
         cubeE_start_pose.p = gymapi.Vec3(*get_axis_params(0.4, self.up_axis_idx))
 
+        cubeF_start_pose = gymapi.Transform()
+        cubeF_start_pose.p = gymapi.Vec3(*get_axis_params(0.4, self.up_axis_idx))
+
         num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        num_cube_bodies = self.gym.get_asset_rigid_body_count(cubeA_asset)+self.gym.get_asset_rigid_body_count(cubeB_asset)+self.gym.get_asset_rigid_body_count(cubeC_asset)+self.gym.get_asset_rigid_body_count(cubeD_asset)+self.gym.get_asset_rigid_body_count(cubeE_asset)
-        num_cube_shapes = self.gym.get_asset_rigid_shape_count(cubeA_asset)+self.gym.get_asset_rigid_shape_count(cubeB_asset)+self.gym.get_asset_rigid_shape_count(cubeC_asset)+self.gym.get_asset_rigid_shape_count(cubeD_asset)+self.gym.get_asset_rigid_shape_count(cubeF_asset)
+        num_cube_bodies = self.gym.get_asset_rigid_body_count(cubeA_asset)+self.gym.get_asset_rigid_body_count(cubeB_asset)+self.gym.get_asset_rigid_body_count(cubeC_asset)+self.gym.get_asset_rigid_body_count(cubeD_asset)+self.gym.get_asset_rigid_body_count(cubeE_asset)+self.gym.get_asset_rigid_body_count(cubeF_asset)
+        num_cube_shapes = self.gym.get_asset_rigid_shape_count(cubeA_asset)+self.gym.get_asset_rigid_shape_count(cubeB_asset)+self.gym.get_asset_rigid_shape_count(cubeC_asset)+self.gym.get_asset_rigid_shape_count(cubeD_asset)+self.gym.get_asset_rigid_shape_count(cubeE_asset)+self.gym.get_asset_rigid_shape_count(cubeF_asset)
         num_prop_bodies = self.gym.get_asset_rigid_body_count(prop_asset)
         num_prop_shapes = self.gym.get_asset_rigid_shape_count(prop_asset)
         max_agg_bodies = num_franka_bodies + num_cube_bodies + self.num_props * num_prop_bodies
@@ -283,6 +291,15 @@ class FrankaBridge(VecTask):
             cubeE_actor = self.gym.create_actor(env_ptr, cubeE_asset, cubeE_pose, "cubeE", i, 2, 0)
             self.gym.set_actor_dof_properties(env_ptr, cubeE_actor, cubeE_dof_props)
 
+            cubeF_pose = cubeF_start_pose
+            cubeF_pose.p.x += self.start_position_noise * (np.random.rand() - 0.5)
+            dz = 0.5 * np.random.rand()
+            dy = np.random.rand() - 0.5
+            cubeF_pose.p.y += self.start_position_noise * dy
+            cubeF_pose.p.z += self.start_position_noise * dz
+            cubeF_actor = self.gym.create_actor(env_ptr, cubeF_asset, cubeF_pose, "cubeF", i, 2, 0)
+            self.gym.set_actor_dof_properties(env_ptr, cubeF_actor, cubeF_dof_props)
+
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
@@ -302,6 +319,9 @@ class FrankaBridge(VecTask):
 
                 cubeE_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeE_actor, "cubeE_handle")
                 cubeE_pose = self.gym.get_rigid_transform(env_ptr, cubeE_handle)
+
+                cubeF_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeF_actor, "cubeF_handle")
+                cubeF_pose = self.gym.get_rigid_transform(env_ptr, cubeF_handle)
 
                 props_per_row = int(np.ceil(np.sqrt(self.num_props)))
                 xmin = -0.5 * self.prop_spacing * (props_per_row - 1)
@@ -387,6 +407,21 @@ class FrankaBridge(VecTask):
                         self.default_prop_states.append([prop_state_pose.p.x, prop_state_pose.p.y, prop_state_pose.p.z,
                                                          prop_state_pose.r.x, prop_state_pose.r.y, prop_state_pose.r.z, prop_state_pose.r.w,
                                                          0, 0, 0, 0, 0, 0])
+
+                        propx = xmin + k * self.prop_spacing
+                        prop_state_pose = gymapi.Transform()
+                        prop_state_pose.p.x = cubeF_pose.p.x + propx
+                        propz, propy = 0, prop_up
+                        prop_state_pose.p.y = cubeF_pose.p.y + propy
+                        prop_state_pose.p.z = cubeF_pose.p.z + propz
+                        prop_state_pose.r = gymapi.Quat(0, 0, 0, 1)
+                        prop_handle = self.gym.create_actor(env_ptr, prop_asset, prop_state_pose, "prop{}".format(prop_count), i, 0, 0)
+                        prop_count += 1
+
+                        prop_idx = j * props_per_row + k
+                        self.default_prop_states.append([prop_state_pose.p.x, prop_state_pose.p.y, prop_state_pose.p.z,
+                                                         prop_state_pose.r.x, prop_state_pose.r.y, prop_state_pose.r.z, prop_state_pose.r.w,
+                                                         0, 0, 0, 0, 0, 0])
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
@@ -397,6 +432,7 @@ class FrankaBridge(VecTask):
             self.cubes.append(cubeC_actor)
             self.cubes.append(cubeD_actor)
             self.cubes.append(cubeE_actor)
+            self.cubes.append(cubeF_actor)
 
         self.hand_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_link7")
         self.cubeA_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeA_actor, "cubeA_handle")
@@ -404,6 +440,7 @@ class FrankaBridge(VecTask):
         self.cubeC_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeC_actor, "cubeC_handle")
         self.cubeD_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeD_actor, "cubeD_handle")
         self.cubeE_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeE_actor, "cubeE_handle")
+        self.cubeF_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cubeE_actor, "cubeF_handle")
         self.lfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_leftfinger")
         self.rfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_rightfinger")
         self.default_prop_states = to_torch(self.default_prop_states, device=self.device, dtype=torch.float).view(self.num_envs, self.num_props, 13)
@@ -472,6 +509,15 @@ class FrankaBridge(VecTask):
         self.cubeE_local_grasp_rot = to_torch([cubeE_local_grasp_pose.r.x, cubeE_local_grasp_pose.r.y,
                                                 cubeE_local_grasp_pose.r.z, cubeE_local_grasp_pose.r.w], device=self.device).repeat((self.num_envs, 1))
 
+        cubeF_local_grasp_pose = gymapi.Transform()
+        cubeF_local_grasp_pose.p = gymapi.Vec3(*get_axis_params(0.01, grasp_pose_axis, 0.3))
+        cubeF_local_grasp_pose.r = gymapi.Quat(0, 0, 0, 1)
+        self.cubeF_local_grasp_pos = to_torch([cubeF_local_grasp_pose.p.x, cubeF_local_grasp_pose.p.y,
+                                                cubeF_local_grasp_pose.p.z], device=self.device).repeat((self.num_envs, 1))
+        self.cubeF_local_grasp_rot = to_torch([cubeF_local_grasp_pose.r.x, cubeF_local_grasp_pose.r.y,
+                                                cubeF_local_grasp_pose.r.z, cubeF_local_grasp_pose.r.w], device=self.device).repeat((self.num_envs, 1))
+
+
 
         self.gripper_forward_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.cubeA_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
@@ -479,12 +525,14 @@ class FrankaBridge(VecTask):
         self.cubeC_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
         self.cubeD_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
         self.cubeE_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
+        self.cubeF_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
         self.gripper_up_axis = to_torch([0, 1, 0], device=self.device).repeat((self.num_envs, 1))
         self.cubeA_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.cubeB_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.cubeC_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.cubeD_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.cubeE_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
+        self.cubeF_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
 
         self.franka_grasp_pos = torch.zeros_like(self.franka_local_grasp_pos)
         self.franka_grasp_rot = torch.zeros_like(self.franka_local_grasp_rot)
@@ -504,6 +552,9 @@ class FrankaBridge(VecTask):
         self.cubeE_grasp_pos = torch.zeros_like(self.cubeA_local_grasp_pos)
         self.cubeE_grasp_rot = torch.zeros_like(self.cubeA_local_grasp_rot)
         self.cubeE_grasp_rot[..., -1] = 1
+        self.cubeF_grasp_pos = torch.zeros_like(self.cubeA_local_grasp_pos)
+        self.cubeF_grasp_rot = torch.zeros_like(self.cubeA_local_grasp_rot)
+        self.cubeF_grasp_rot[..., -1] = 1
         self.franka_lfinger_pos = torch.zeros_like(self.franka_local_grasp_pos)
         self.franka_rfinger_pos = torch.zeros_like(self.franka_local_grasp_pos)
         self.franka_lfinger_rot = torch.zeros_like(self.franka_local_grasp_rot)
@@ -511,10 +562,10 @@ class FrankaBridge(VecTask):
 
     def compute_reward(self, actions):
         self.gt_rew_buf, self.reset_buf[:], self.successes[:], self.consecutive_successes[:] = compute_success(
-            self.reset_buf, self.progress_buf, self.successes, self.consecutive_successes, self.actions, self.cubeA_dof_pos,self.cubeB_dof_pos,self.cubeC_dof_pos,self.cubeD_dof_pos,self.cubeE_dof_pos,
-            self.franka_grasp_pos, self.cubeA_grasp_pos,self.cubeB_grasp_pos,self.cubeC_grasp_pos,self.cubeD_grasp_pos,self.cubeE_grasp_pos, self.franka_grasp_rot, self.cubeA_grasp_rot,self.cubeB_grasp_rot,self.cubeC_grasp_rot,self.cubeD_grasp_rot,self.cubeE_grasp_rot,
+            self.reset_buf, self.progress_buf, self.successes, self.consecutive_successes, self.actions, self.cubeA_dof_pos,self.cubeB_dof_pos,self.cubeC_dof_pos,self.cubeD_dof_pos,self.cubeE_dof_pos,self.cubeF_dof_pos,
+            self.franka_grasp_pos, self.cubeA_grasp_pos,self.cubeB_grasp_pos,self.cubeC_grasp_pos,self.cubeD_grasp_pos,self.cubeE_grasp_pos, self.franka_grasp_rot, self.cubeA_grasp_rot,self.cubeB_grasp_rot,self.cubeC_grasp_rot,self.cubeD_grasp_rot,self.cubeE_grasp_rot,self.cubeF_grasp_rot,
             self.franka_lfinger_pos, self.franka_rfinger_pos,
-            self.gripper_forward_axis, self.cubeA_inward_axis,self.cubeB_inward_axis,self.cubeC_inward_axis,self.cubeD_inward_axis,self.cubeA_inward_axis,self.cubeA_inward_axis, self.gripper_up_axis, self.cubeA_up_axis,self.cubeB_up_axis,self.cubeC_up_axis,self.cubeD_up_axis,self.cubeE_up_axis,
+            self.gripper_forward_axis, self.cubeA_inward_axis,self.cubeB_inward_axis,self.cubeC_inward_axis,self.cubeD_inward_axis,self.cubeA_inward_axis,self.cubeA_inward_axis, self.gripper_up_axis, self.cubeA_up_axis,self.cubeB_up_axis,self.cubeC_up_axis,self.cubeD_up_axis,self.cubeE_up_axis,self.cubeF_up_axis,
             self.num_envs, self.dist_reward_scale, self.rot_reward_scale, self.around_handle_reward_scale, self.open_reward_scale,
             self.finger_dist_reward_scale, self.action_penalty_scale, self.distX_offset, self.max_episode_length
         )
@@ -539,7 +590,7 @@ class FrankaBridge(VecTask):
         cubeD_pos = self.rigid_body_states[:, self.cubeD_handle][:, 0:3]
         cubeD_rot = self.rigid_body_states[:, self.cubeD_handle][:, 3:7]
         cubeE_pos = self.rigid_body_states[:, self.cubeE_handle][:, 0:3]
-        cubeE_rot = self.rigid_body_states[:, self.cubeE_handle][:, 3:7]
+        cubeF_rot = self.rigid_body_states[:, self.cubeF_handle][:, 3:7]
 
         self.franka_grasp_rot[:], self.franka_grasp_pos[:], self.cubeA_grasp_rot[:], self.cubeA_grasp_pos[:],self.cubeB_grasp_rot[:], self.cubeB_grasp_pos[:],self.cubeC_grasp_rot[:], self.cubeC_grasp_pos[:],self.cubeD_grasp_rot[:], self.cubeD_grasp_pos[:],self.cubeE_grasp_rot[:], self.cubeE_grasp_pos[:] = \
             compute_grasp_transforms(hand_rot, hand_pos, self.franka_local_grasp_rot, self.franka_local_grasp_pos,
@@ -547,7 +598,8 @@ class FrankaBridge(VecTask):
                                      cubeB_rot, cubeB_pos, self.cubeB_local_grasp_rot, self.cubeB_local_grasp_pos,
                                      cubeC_rot, cubeC_pos, self.cubeC_local_grasp_rot, self.cubeC_local_grasp_pos,
                                      cubeD_rot, cubeD_pos, self.cubeD_local_grasp_rot, self.cubeD_local_grasp_pos,
-                                     cubeE_rot, cubeE_pos, self.cubeE_local_grasp_rot, self.cubeE_local_grasp_pos
+                                     cubeE_rot, cubeE_pos, self.cubeE_local_grasp_rot, self.cubeE_local_grasp_pos,
+                                     cubeF_rot, cubeF_pos, self.cubeF_local_grasp_rot, self.cubeF_local_grasp_pos
                                      )
 
         self.franka_lfinger_pos = self.rigid_body_states[:, self.lfinger_handle][:, 0:3]
@@ -562,12 +614,14 @@ class FrankaBridge(VecTask):
         to_target_C = self.cubeC_grasp_pos - self.franka_grasp_pos
         to_target_D = self.cubeD_grasp_pos - self.franka_grasp_pos
         to_target_E = self.cubeE_grasp_pos - self.franka_grasp_pos
+        to_target_F = self.cubeF_grasp_pos - self.franka_grasp_pos
         self.obs_buf = torch.cat((dof_pos_scaled, self.franka_dof_vel * self.dof_vel_scale, to_target_A,to_target_B,to_target_C,to_target_D,to_target_E,
                                   self.cubeA_dof_pos[:, 3].unsqueeze(-1), self.cubeA_dof_vel[:, 3].unsqueeze(-1),
                                   self.cubeB_dof_pos[:, 3].unsqueeze(-1), self.cubeB_dof_vel[:, 3].unsqueeze(-1),
                                   self.cubeC_dof_pos[:, 3].unsqueeze(-1), self.cubeC_dof_vel[:, 3].unsqueeze(-1),
                                   self.cubeD_dof_pos[:, 3].unsqueeze(-1), self.cubeD_dof_vel[:, 3].unsqueeze(-1),
-                                  self.cubeE_dof_pos[:, 3].unsqueeze(-1), self.cubeE_dof_vel[:, 3].unsqueeze(-1)), dim=-1)
+                                  self.cubeE_dof_pos[:, 3].unsqueeze(-1), self.cubeE_dof_vel[:, 3].unsqueeze(-1),
+                                  self.cubeF_dof_pos[:, 3].unsqueeze(-1), self.cubeF_dof_vel[:, 3].unsqueeze(-1)), dim=-1)
 
         return self.obs_buf
 
@@ -586,6 +640,7 @@ class FrankaBridge(VecTask):
         self.cubeC_dof_state[env_ids, :] = torch.zeros_like(self.cubeC_dof_state[env_ids])
         self.cubeD_dof_state[env_ids, :] = torch.zeros_like(self.cubeD_dof_state[env_ids])
         self.cubeE_dof_state[env_ids, :] = torch.zeros_like(self.cubeE_dof_state[env_ids])
+        self.cubeF_dof_state[env_ids, :] = torch.zeros_like(self.cubeF_dof_state[env_ids])
 
         if self.num_props > 0:
             prop_indices = self.global_indices[env_ids, 2:].flatten()
@@ -680,10 +735,20 @@ class FrankaBridge(VecTask):
                 py = (self.cubeE_grasp_pos[i] + quat_apply(self.cubeE_grasp_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
                 pz = (self.cubeE_grasp_pos[i] + quat_apply(self.cubeE_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
 
-                p0 = self.cubeE_grasp_pos[i].cpu().numpy()
+                p0 = self.cubeF_grasp_pos[i].cpu().numpy()
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], px[0], px[1], px[2]], [1, 0, 0])
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]], [0, 1, 0])
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]], [0, 0, 1])
+
+                px = (self.cubeF_grasp_pos[i] + quat_apply(self.cubeF_grasp_rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
+                py = (self.cubeF_grasp_pos[i] + quat_apply(self.cubeF_grasp_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
+                pz = (self.cubeF_grasp_pos[i] + quat_apply(self.cubeF_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+
+                p0 = self.cubeF_grasp_pos[i].cpu().numpy()
+                self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], px[0], px[1], px[2]], [1, 0, 0])
+                self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]], [0, 1, 0])
+                self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]], [0, 0, 1])
+
 
                 px = (self.franka_lfinger_pos[i] + quat_apply(self.franka_lfinger_rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
                 py = (self.franka_lfinger_pos[i] + quat_apply(self.franka_lfinger_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
@@ -705,8 +770,8 @@ class FrankaBridge(VecTask):
 
 @torch.jit.script
 def compute_grasp_transforms(hand_rot, hand_pos, franka_local_grasp_rot, franka_local_grasp_pos,
-                             cubeA_rot, cubeA_pos,cubeB_rot, cubeB_pos,cubeC_rot, cubeC_pos,cubeD_rot, cubeD_pos,cubeE_rot, cubeE_pos, 
-                             cubeA_local_grasp_rot, cubeA_local_grasp_pos,cubeB_local_grasp_rot, cubeB_local_grasp_pos,cubeC_local_grasp_rot, cubeC_local_grasp_pos,cubeD_local_grasp_rot, cubeD_local_grasp_pos,cubeE_local_grasp_rot, cubeE_local_grasp_pos
+                             cubeA_rot, cubeA_pos,cubeB_rot, cubeB_pos,cubeC_rot, cubeC_pos,cubeD_rot, cubeD_pos,cubeE_rot, cubeE_pos, cubeF_pos, 
+                             cubeA_local_grasp_rot, cubeA_local_grasp_pos,cubeB_local_grasp_rot, cubeB_local_grasp_pos,cubeC_local_grasp_rot, cubeC_local_grasp_pos,cubeD_local_grasp_rot, cubeD_local_grasp_pos,cubeE_local_grasp_rot, cubeE_local_grasp_pos,cubeF_local_grasp_rot, cubeF_local_grasp_pos
                              ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]
 
@@ -722,6 +787,8 @@ def compute_grasp_transforms(hand_rot, hand_pos, franka_local_grasp_rot, franka_
         cubeD_rot, cubeD_pos, cubeD_local_grasp_rot, cubeD_local_grasp_pos)
     global_cubeE_rot, global_cubeE_pos = tf_combine(
         cubeE_rot, cubeA_pos, cubeE_local_grasp_rot, cubeE_local_grasp_pos)
+    global_cubeF_rot, global_cubeF_pos = tf_combine(
+        cubeF_rot, cubeA_pos, cubeF_local_grasp_rot, cubeF_local_grasp_pos)
 
     return global_franka_rot, global_franka_pos, global_cubeA_rot, global_cubeA_pos,global_cubeB_rot, global_cubeB_pos,global_cubeC_rot, global_cubeC_pos,global_cubeD_rot, global_cubeD_pos,global_cubeE_rot, global_cubeE_pos
 
@@ -730,72 +797,111 @@ def compute_grasp_transforms(hand_rot, hand_pos, franka_local_grasp_rot, franka_
 
 @torch.jit.script
 def compute_success(
-    reset_buf, progress_buf, successes, consecutive_successes, actions, cubeA_dof_pos,cubeB_dof_pos,cubeC_dof_pos,cubeD_dof_pos,cubeE_dof_pos,
-    franka_grasp_pos, cubeA_grasp_pos, cubeB_grasp_pos,cubeC_grasp_pos,cubeD_grasp_pos,cubeE_grasp_pos,franka_grasp_rot, cubeA_grasp_rot,cubeB_grasp_rot,cubeC_grasp_rot,cubeD_grasp_rot,cubeE_grasp_rot,
+    reset_buf, progress_buf, successes, consecutive_successes, actions, cubeA_dof_pos,cubeB_dof_pos,cubeC_dof_pos,cubeD_dof_pos,cubeE_dof_pos,cubeF_dof_pos,
+    franka_grasp_pos, cubeA_grasp_pos, cubeB_grasp_pos,cubeC_grasp_pos,cubeD_grasp_pos,cubeE_grasp_pos,cubeF_grasp_pos,franka_grasp_rot, cubeA_grasp_rot,cubeB_grasp_rot,cubeC_grasp_rot,cubeD_grasp_rot,cubeE_grasp_rot,cubeF_grasp_rot,
     franka_lfinger_pos, franka_rfinger_pos,
-    gripper_forward_axis, cubeA_inward_axis, cubeB_inward_axis,cubeC_inward_axis,cubeD_inward_axis,cubeE_inward_axis,gripper_up_axis, cubeA_up_axis,cubeB_up_axis,cubeC_up_axis,cubeD_up_axis,cubeE_up_axis,
-    num_envs, dist_reward_scale, rot_reward_scale, around_handle_reward_scale, open_reward_scale,stack_reward_scale,lift_reward_scale,align_reward_scale
+    gripper_forward_axis, cubeA_inward_axis, cubeB_inward_axis,cubeC_inward_axis,cubeD_inward_axis,cubeE_inward_axis,gripper_up_axis, cubeA_up_axis,cubeB_up_axis,cubeC_up_axis,cubeD_up_axis,cubeE_up_axis,cubeF_up_axis,
+    num_envs, dist_reward_scale, rot_reward_scale, around_handle_reward_scale, open_reward_scale, stack_reward_scale,lift_reward_scale,align_reward_scale
     finger_dist_reward_scale, action_penalty_scale, distX_offset, max_episode_length
-    cubeA_size,cubeB_size,cubeC_size,cubeD_size,cubeE_size
+    cubeA_size,cubeB_size,cubeC_size,cubeD_size,cubeE_size,cubeF_size
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, int, float, float, float, float, float, float, float, float) -> Tuple[Tensor, Tensor, Tensor, Tensor]
+    target_height_B = cubeA_size[2] + cubeB_size[2] / 2.0
+    target_height_D = cubeC_size[2] + cubeD_size[2] / 2.0
+    target_height_F = cubeE_size[2] + cubeF_size[2] / 2.0
 
-    d_ab = torch.norm(cubeB_dof_pos - cubeA_dof_pos, p=2, dim=-1)
-    d_bc = torch.norm(cubeB_dof_pos - cubeC_dof_pos, p=2, dim=-1)
-    dist_reward = 1.0 / (1.0 + ((d_ab-0.06) ** 2+(d_bc-0.06) ** 2))
-    dist_reward += dist_reward
-    dist_reward = torch.where(d <= 0.02, dist_reward * 2, dist_reward)
+    # distance from hand to the cubeB
+    d_b = torch.norm(cubeB_dof_pos-franka_grasp_pos, dim=-1)
+    d_lf = torch.norm(cubeB_dof_pos - franka_lfinger_pos, dim=-1)
+    d_rf = torch.norm(cubeB_dof_pos - franka_rfinger_pos, dim=-1)
+    dist_reward_B = 1 - torch.tanh(10.0 * (d_b + d_lf + d_rf) / 3)
 
-     # reward for lifting cubeD
+    # distance from hand to the cubeD
+    d_d = torch.norm(cubeD_dof_pos-franka_grasp_pos, dim=-1)
+    d_lf = torch.norm(cubeD_dof_pos - franka_lfinger_pos, dim=-1)
+    d_rf = torch.norm(cubeD_dof_pos - franka_rfinger_pos, dim=-1)
+    dist_reward_D = 1 - torch.tanh(10.0 * (d_d + d_lf + d_rf) / 3)
+
+    # distance from hand to the cubeF
+    d_f = torch.norm(cubeF_dof_pos-franka_grasp_pos, dim=-1)
+    d_lf = torch.norm(cubeF_dof_pos - franka_lfinger_pos, dim=-1)
+    d_rf = torch.norm(cubeF_dof_pos - franka_rfinger_pos, dim=-1)
+    dist_reward_F = 1 - torch.tanh(10.0 * (d_f + d_lf + d_rf) / 3)
+
+    dist_reward=dist_reward_B+dist_reward_D+dist_reward_F
+
+    # reward for lifting cubeD
+    cubeB_height = cubeB_dof_pos[:, 2]
+    cubeB_lifted = (cubeB_height - cubeB_size[2]) > 0.04
+    lift_reward_B = cubeB_lifted
+
+    # reward for lifting cubeD
     cubeD_height = cubeD_dof_pos[:, 2]
     cubeD_lifted = (cubeD_height - cubeD_size[2]) > 0.04
     lift_reward_D = cubeD_lifted
 
     # reward for lifting cubeE
-    cubeE_height = cubeE_dof_pos[:, 2] - reward_settings["table_height"]
-    cubeE_lifted = (cubeE_height - cubeE_size[2]) > 0.04
-    lift_reward_E = cubeE_lifted
+    cubeF_height = cubeF_dof_pos[:, 2]
+    cubeF_lifted = (cubeF_height - cubeF_size[2]) > 0.04
+    lift_reward_F = cubeF_lifted
 
-    lift_reward=lift_reward_D+lift_reward_E
+    lift_reward=lift_reward_D+lift_reward_F
+
+    # how closely aligned cubeB is to cubeA (only provided if cubeB is lifted)
+    relative_b=cubeB_dof_pos-cubeA_dof_pos
+    offset = torch.zeros_like(relative_b)
+    offset[:, 2] = (cubeB_size[2] + cubeA_size[2]) / 2
+    d_ab = torch.norm(relative_b + offset, dim=-1)
+    align_reward_B = (1 - torch.tanh(10.0 * d_ab)) * cubeB_lifted
 
     # how closely aligned cubeD is to cubeA and cubeB (only provided if cubeD is lifted)
-    relative_d=cubeD_dof_pos-(cubeA_dof_pos+cubeB_dof_pos)*0.5
+    relative_d=cubeD_dof_pos-cubeC_dof_pos
     offset = torch.zeros_like(relative_d)
-    offset[:, 2] = (cubeA_size[2] + cubeD_size[2]) / 2
-    d_ad = torch.norm(relative_d + offset, dim=-1)
-    align_reward_D = (1 - torch.tanh(10.0 * d_ad)) * cubeD_lifted
+    offset[:, 2] = (cubeC_size[2] + cubeD_size[2]) / 2
+    d_cd = torch.norm(relative_d + offset, dim=-1)
+    align_reward_D = (1 - torch.tanh(10.0 * d_cd)) * cubeD_lifted
 
     # how closely aligned cubeE is to cubeB and cubeC (only provided if cubeE is lifted)
-    relative_e=cubeE_dof_pos-(cubeB_dof_pos+cubeC_dof_pos)*0.5
-    offset = torch.zeros_like(relative_e)
-    offset[:, 2] = (cubeC_size[2] + cubeE_size[2]) / 2
-    d_ce = torch.norm(relative_e + offset, dim=-1)
-    align_reward_E = (1 - torch.tanh(10.0 * d_ce)) * cubeE_lifted
+    relative_f=cubeF_dof_pos-cubeE_dof_pos
+    offset = torch.zeros_like(relative_f)
+    offset[:, 2] = (cubeE_size[2] + cubeF_size[2]) / 2
+    d_ef = torch.norm(relative_f + offset, dim=-1)
+    align_reward_F = (1 - torch.tanh(10.0 * d_ef)) * cubeF_lifted
 
-    align_reward=align_reward_D+align_reward_E
+    align_reward=align_reward_B+align_reward_D+align_reward_E
+
+    # Dist reward is maximum of dist and align reward
+    Dist_reward = torch.max(dist_reward, align_reward)
+
+    # final reward for stacking successfully (only if cubeB is close to target height and corresponding location, and gripper is not grasping)
+    cubeB_align_cubeA = (torch.norm(relative_b[:, :2], dim=-1) < 0.02)
+    cubeB_on_cubeA = torch.abs(cubeB_height - target_height_B) < 0.02
+    gripper_away_from_cubeB = (d_b > 0.04)
+    stack_reward_B = cubeB_align_cubeA & cubeB_on_cubeA & gripper_away_from_cubeB
 
     # final reward for stacking successfully (only if cubeD is close to target height and corresponding location, and gripper is not grasping)
-    cubeD_align_cubeAB = (torch.norm(relative_d[:, :2], dim=-1) < 0.02)
-    cubeD_on_cubeAB = torch.abs(cubeD_height - (cubeA_size[2] + cubeC_size[2]/2))) < 0.02
+    cubeD_align_cubeC = (torch.norm(relative_d[:, :2], dim=-1) < 0.02)
+    cubeD_on_cubeC = torch.abs(cubeD_height - target_height_D) < 0.02
     gripper_away_from_cubeD = (d_d > 0.04)
-    stack_reward_D = cubeD_align_cubeAB & cubeD_on_cubeAB & gripper_away_from_cubeD
+    stack_reward_D = cubeD_align_cubeC & cubeD_on_cubeC & gripper_away_from_cubeD
 
     # final reward for stacking successfully (only if cubeE is close to target height and corresponding location, and gripper is not grasping)
-    cubeE_align_cubeBC = (torch.norm(relative_e[:, :2], dim=-1) < 0.02)
-    cubeE_on_cubeBC = torch.abs(cubeE_height - (cubeC_size[2] + cubeE_size[2]/2))) < 0.02
-    gripper_away_from_cubeE = (d_e > 0.04)
-    stack_reward_E = cubeE_align_cubeBC & cubeE_on_cubeBC & gripper_away_from_cubeE
+    cubeF_align_cubeE = (torch.norm(relative_f[:, :2], dim=-1) < 0.02)
+    cubeF_on_cubeE = torch.abs(cubef_height - target_height_f) < 0.02
+    gripper_away_from_cubeF = (d_f > 0.04)
+    stack_reward_F = cubeF_align_cubeE & cubeF_on_cubeE & gripper_away_from_cubeF
 
-    stack_reward=stack_reward_D+stack_reward_E
+    stack_reward=stack_reward_B+stack_reward_D+stack_reward_F
 
     # Compose rewards
 
     # We either provide the stack reward or the align + dist reward
     rewards = torch.where(
-        stack_reward_scale*stack_reward,
-        dist_reward_scale*Dist_reward +lift_reward_scale*lift_reward +  align_reward_scale*align_reward,
+        stack_reward,
+        stack_reward_scale* stack_reward,
+        dist_reward_scale * Dist_reward + lift_reward_scale * lift_reward + align_reward_scale * align_reward,
     )
-    
+
 
     successes = torch.where(cubeA_dof_pos[:, 3] > 0.39, torch.ones_like(successes), successes)
     reset_buf = torch.where(cubeA_dof_pos[:, 3] > 0.39, torch.ones_like(reset_buf), reset_buf)

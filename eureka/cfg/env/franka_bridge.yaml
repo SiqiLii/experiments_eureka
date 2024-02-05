@@ -1,0 +1,4 @@
+task: FrankaBridge
+env_name: franka_bridge
+description: place three cubes as a line with gap between each other equals to side length of cube. Then stack cuboids on top of each two cubes to form a bridge.
+max_iterations: 1500

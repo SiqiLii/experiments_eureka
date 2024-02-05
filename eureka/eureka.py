@@ -25,7 +25,10 @@ def main(cfg):
     logging.info(f"Workspace: {workspace_dir}")
     logging.info(f"Project Root: {EUREKA_ROOT_DIR}")
 
-    openai.api_key = os.getenv("OPENAI_API_KEY")
+    with open("/cluster/home/siqili/code/isaacgym/python/experiments_eureka/eureka/key.txt", 'r') as file:
+        openai.api_key = file.read().strip()
+   
+    #openai.api_key = os.getenv("OPENAI_API_KEY")
 
     task = cfg.env.task
     task_description = cfg.env.description

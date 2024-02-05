@@ -1,0 +1,4 @@
+task: FrankaColorStack
+env_name: franka_color_stack
+description: stack cubes with same color together. Smaller cube on top of larger cube.
+max_iterations: 1500
