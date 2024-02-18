@@ -367,7 +367,7 @@ class ShadowHandGPT(VecTask):
         self.goal_object_indices = to_torch(self.goal_object_indices, dtype=torch.long, device=self.device)
 
     def compute_reward(self, actions):
-        self.rew_buf[:], self.rew_dict = compute_reward(self.object_rot, self.goal_rot, self.object_angvel, self.action)
+        self.rew_buf[:], self.rew_dict = compute_reward(self.object_rot, self.goal_rot)
         self.extras['gpt_reward'] = self.rew_buf.mean()
         for rew_state in self.rew_dict: self.extras[rew_state] = self.rew_dict[rew_state].mean()
         self.rew_buf[:] = compute_bonus(
@@ -763,28 +763,25 @@ import math
 import torch
 from torch import Tensor
 @torch.jit.script
-def compute_reward(object_rot: torch.Tensor, goal_rot: torch.Tensor, object_angvel: torch.Tensor, action: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    
-    # compute conversion parameters
-    object_angvel_norm = torch.norm(object_angvel, dim=-1)
-    goal_rot_inv = torch.inverse(goal_rot)
-    relative_rot = torch.mm(object_rot, goal_rot_inv)
-    relative_rot_norm = torch.norm(relative_rot, dim=-1)
-    angvel_diff = object_angvel_norm - relative_rot_norm
-    
-    # compute reward components
-    spinning_reward = torch.exp(-angvel_diff)
-    align_reward = torch.exp(-relative_rot_norm)
-    
-    # compute total reward
-    total_reward = spinning_reward + align_reward
+def compute_reward(object_rot: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Compute the difference between the object's rotation and the target rotation
+    rot_diff = torch.abs(torch.tensor(1.0, device=object_rot.device) - torch.abs(torch.sum(torch.mul(object_rot, goal_rot), dim=1)))
+    rot_diff_reward = torch.exp(-0.5 * rot_diff)
 
-    # compute sparse reward
-    goal_achieved = (relative_rot_norm < 0.01).float()
-    sparse_reaching_reward = goal_achieved
-     
-    total_reward += sparse_reaching_reward
-    
-    individual_rewards = {"spinning_reward": spinning_reward, "align_reward": align_reward, "sparse_reaching_reward": sparse_reaching_reward}
-    
-    return total_reward, individual_rewards
+    # Introduce the temperature variable for transformation
+    temperature = torch.tensor(0.5, device=object_rot.device)
+
+    # Compute the transformed reward component
+    transformed_rot_diff_reward = torch.exp(-temperature * rot_diff)
+
+    # Calculate the total reward
+    total_reward = transformed_rot_diff_reward
+
+    # Store individual reward components in a dictionary
+    reward_components = {
+        "rot_diff_reward": rot_diff_reward,
+        "transformed_rot_diff_reward": transformed_rot_diff_reward
+    }
+
+    # Return the total reward and the reward components dictionary
+    return total_reward, reward_components

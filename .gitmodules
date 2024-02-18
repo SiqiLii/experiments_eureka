@@ -1,0 +1,3 @@
+[submodule "pandagymenvs/panda-gym"]
+	path = pandagymenvs/panda-gym
+	url = https://github.com/SiqiLii/panda-gym.git

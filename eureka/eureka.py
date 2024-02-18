@@ -18,6 +18,7 @@ from utils.extract_task_code import *
 
 EUREKA_ROOT_DIR = os.getcwd()
 ISAAC_ROOT_DIR = f"{EUREKA_ROOT_DIR}/../isaacgymenvs/isaacgymenvs"
+PANDA_ROOT_DIR = f"{EUREKA_ROOT_DIR}/../pandagymenvs"
 
 @hydra.main(config_path="cfg", config_name="config", version_base="1.1")
 def main(cfg):
@@ -25,7 +26,7 @@ def main(cfg):
     logging.info(f"Workspace: {workspace_dir}")
     logging.info(f"Project Root: {EUREKA_ROOT_DIR}")
 
-    with open("/cluster/home/siqili/code/isaacgym/python/experiments_eureka/eureka/key.txt", 'r') as file:
+    with open(EUREKA_ROOT_DIR+"/key.txt", 'r') as file:
         openai.api_key = file.read().strip()
    
     #openai.api_key = os.getenv("OPENAI_API_KEY")
